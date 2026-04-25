@@ -1,0 +1,251 @@
+import pygame
+import random
+
+# --- Configuración Inicial de Pygame ---
+pygame.init()
+
+WIDTH, HEIGHT = 1200, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Juego Platformer Mejorado")
+clock = pygame.time.Clock()
+
+# --- Colores ---
+COLOR_FONDO = (255, 255, 255)
+ROJO = (255, 0, 0)
+VERDE = (0, 255, 0)
+AZUL = (0, 0, 255)
+
+# --- Física ---
+ALTURA_SUELO = 500
+FRICCION_HORIZONTAL = 0.90     
+
+# --- Fuente ---
+font = pygame.font.SysFont(None, 24)
+
+# --- Carga de imágenes ---
+walk_images = []
+for i in range(1, 7):
+    try:
+        walk_images.append(pygame.image.load(f"SQ{i}.jpg"))
+    except:
+        pass
+
+try:
+    idle_image = pygame.image.load("SQ.jpg")
+except:
+    idle_image = pygame.Surface((40, 40))
+
+jump_images = []
+for i in range(1, 7):
+    try:
+        jump_images.append(pygame.image.load(f"S{i}.jpg"))
+    except:
+        pass
+
+# --- Boosts ---
+tamanio_boost = (25, 25)
+surf_speed = pygame.Surface(tamanio_boost); surf_speed.fill(ROJO)
+surf_jump = pygame.Surface(tamanio_boost); surf_jump.fill(VERDE)
+surf_gravity = pygame.Surface(tamanio_boost); surf_gravity.fill(AZUL)
+
+boost_images = {
+    "speed": surf_speed,
+    "jump": surf_jump,
+    "gravity": surf_gravity
+}
+
+# --- Player ---
+class Player:
+    def __init__(self):
+        self.rect = pygame.Rect(100, 300, 40, 40)
+
+        self.vel_x = 0
+        self.vel_y = 0
+
+        # BASE
+        self.base_speed_max = 7
+        self.base_aceleracion = 0.8  
+        self.base_jump_power = -13
+        self.base_gravity = 0.6
+
+        # ACTUAL
+        self.current_speed_max = self.base_speed_max
+        self.current_aceleracion = self.base_aceleracion
+        self.current_jump_power = self.base_jump_power
+        self.current_gravity = self.base_gravity
+
+        self.on_ground = True
+        self.facing_right = True
+        self.state = "idle"
+        self.frame = 0
+
+        # 🔥 PODERES
+        self.active_powers = {
+            "speed": 0,
+            "jump": 0,
+            "gravity": 0
+        }
+        self.power_duration = 5000  # 5 segundos
+
+    def apply_power(self, power_type):
+        # Reinicia tiempo si ya lo tiene
+        self.active_powers[power_type] = pygame.time.get_ticks() + self.power_duration
+
+    def update_powers(self):
+        current_time = pygame.time.get_ticks()
+
+        # Resetear stats
+        self.current_speed_max = self.base_speed_max
+        self.current_aceleracion = self.base_aceleracion
+        self.current_jump_power = self.base_jump_power
+        self.current_gravity = self.base_gravity
+
+        for power, end_time in self.active_powers.items():
+            if current_time < end_time:
+
+                if power == "speed":
+                    self.current_speed_max += 8
+                    self.current_aceleracion += 1.2
+
+                elif power == "jump":
+                    self.current_jump_power -= 7
+
+                elif power == "gravity":
+                    # gravedad reducida (no afecta fuerza de salto)
+                    self.current_gravity = self.base_gravity * 0.4
+
+    def update(self, keys):
+        self.update_powers()
+
+        # Movimiento horizontal
+        if keys[pygame.K_LEFT]:
+            self.vel_x -= self.current_aceleracion
+            self.facing_right = False
+        elif keys[pygame.K_RIGHT]:
+            self.vel_x += self.current_aceleracion
+            self.facing_right = True
+
+        self.vel_x *= FRICCION_HORIZONTAL
+
+        # Limitar velocidad
+        self.vel_x = max(-self.current_speed_max, min(self.vel_x, self.current_speed_max))
+
+        # Salto
+        if keys[pygame.K_SPACE] and self.on_ground:
+            self.vel_y = self.current_jump_power
+            self.on_ground = False
+
+        self.vel_y += self.current_gravity
+
+        # Aplicar movimiento
+        self.rect.x += int(self.vel_x)
+        self.rect.y += int(self.vel_y)
+
+        # Suelo
+        if self.rect.bottom >= ALTURA_SUELO:
+            self.rect.bottom = ALTURA_SUELO
+            self.vel_y = 0
+            self.on_ground = True
+
+        # Wrap pantalla
+        if self.rect.x > WIDTH:
+            self.rect.x = -self.rect.width
+        elif self.rect.right < 0:
+            self.rect.x = WIDTH
+
+        # Estados
+        nuevo_estado = "idle"
+        if not self.on_ground:
+            nuevo_estado = "jump"
+        elif abs(self.vel_x) > 1:
+            nuevo_estado = "walk"
+
+        if self.state != nuevo_estado:
+            self.state = nuevo_estado
+            self.frame = 0
+
+        self.frame += 0.2
+        if self.frame >= 6:
+            self.frame = 0
+
+    def draw(self, screen):
+        if self.state == "walk" and len(walk_images) > 0:
+            img = walk_images[int(self.frame)]
+        elif self.state == "jump" and len(jump_images) > 0:
+            img = jump_images[int(self.frame)]
+        else:
+            img = idle_image
+
+        if not self.facing_right:
+            img = pygame.transform.flip(img, True, False)
+
+        screen.blit(img, (self.rect.x, self.rect.y))
+
+        # 🔥 EFECTOS VISUALES (varios poderes)
+        offset = -15
+        current_time = pygame.time.get_ticks()
+
+        for power, end_time in self.active_powers.items():
+            if current_time < end_time:
+
+                if power == "speed":
+                    color = ROJO
+                elif power == "jump":
+                    color = VERDE
+                elif power == "gravity":
+                    color = AZUL
+
+                pygame.draw.circle(screen, color, (self.rect.centerx, self.rect.top + offset), 6)
+                offset -= 12
+
+
+# --- Boost ---
+class Boost:
+    def __init__(self):
+        self.type = random.choice(["speed", "jump", "gravity"])
+        self.rect = pygame.Rect(random.randint(0, WIDTH-25), ALTURA_SUELO - 25, 25, 25)
+
+    def draw(self, screen):
+        screen.blit(boost_images[self.type], (self.rect.x, self.rect.y))
+
+
+# --- Juego ---
+player = Player()
+boosts = [Boost() for _ in range(3)]
+
+running = True
+while running:
+    screen.fill(COLOR_FONDO)
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+
+    keys = pygame.key.get_pressed()
+    player.update(keys)
+
+    # Colisiones
+    for boost in boosts[:]:
+        boost.draw(screen)
+        if player.rect.colliderect(boost.rect):
+            player.apply_power(boost.type)
+            boosts.remove(boost)
+            boosts.append(Boost())
+
+    player.draw(screen)
+
+    # 🔥 UI tiempos
+    y_offset = 10
+    current_time = pygame.time.get_ticks()
+
+    for power, end_time in player.active_powers.items():
+        remaining = (end_time - current_time) // 1000
+        if remaining > 0:
+            text = font.render(f"{power}: {remaining}s", True, (0,0,0))
+            screen.blit(text, (10, y_offset))
+            y_offset += 20
+
+    pygame.display.update()
+    clock.tick(60)
+
+pygame.quit()
