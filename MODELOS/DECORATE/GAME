@@ -1,3 +1,4 @@
+import os
 import pygame
 import random
 
@@ -23,22 +24,25 @@ FRICCION_HORIZONTAL = 0.90
 font = pygame.font.SysFont(None, 24)
 
 # --- Carga de imágenes ---
+script_dir = os.path.dirname(os.path.abspath(__file__))
+assets_dir = os.path.normpath(os.path.join(script_dir, ".."))
+
 walk_images = []
 for i in range(1, 7):
     try:
-        walk_images.append(pygame.image.load(f"SQ{i}.jpg"))
+        walk_images.append(pygame.image.load(os.path.join(assets_dir, f"SQ{i}.jpg")))
     except:
         pass
 
 try:
-    idle_image = pygame.image.load("SQ.jpg")
+    idle_image = pygame.image.load(os.path.join(assets_dir, "SQ.jpg"))
 except:
     idle_image = pygame.Surface((40, 40))
 
 jump_images = []
 for i in range(1, 7):
     try:
-        jump_images.append(pygame.image.load(f"S{i}.jpg"))
+        jump_images.append(pygame.image.load(os.path.join(assets_dir, f"S{i}.jpg")))
     except:
         pass
 
@@ -57,7 +61,7 @@ boost_images = {
 # --- Player ---
 class Player:
     def __init__(self):
-        self.rect = pygame.Rect(100, 300, 40, 40)
+        self.rect = pygame.Rect(100, 250, 40, 40)
 
         self.vel_x = 0
         self.vel_y = 0
@@ -108,11 +112,11 @@ class Player:
                     self.current_aceleracion += 1.2
 
                 elif power == "jump":
-                    self.current_jump_power -= 7
+                    self.current_jump_power = self.base_jump_power - 8
 
                 elif power == "gravity":
-                    # gravedad reducida (no afecta fuerza de salto)
-                    self.current_gravity = self.base_gravity * 0.4
+                    # gravedad reducida solo en la caída, no en el impulso hacia arriba
+                    self.current_gravity = self.base_gravity * 0.45
 
     def update(self, keys):
         self.update_powers()
@@ -135,7 +139,10 @@ class Player:
             self.vel_y = self.current_jump_power
             self.on_ground = False
 
-        self.vel_y += self.current_gravity
+        if self.vel_y >= 0:
+            self.vel_y += self.current_gravity
+        else:
+            self.vel_y += self.base_gravity
 
         # Aplicar movimiento
         self.rect.x += int(self.vel_x)
@@ -179,24 +186,33 @@ class Player:
         if not self.facing_right:
             img = pygame.transform.flip(img, True, False)
 
-        screen.blit(img, (self.rect.x, self.rect.y))
+        img_rect = img.get_rect(topleft=(self.rect.x, self.rect.y))
+        screen.blit(img, img_rect)
 
         # 🔥 EFECTOS VISUALES (varios poderes)
-        offset = -15
         current_time = pygame.time.get_ticks()
 
         for power, end_time in self.active_powers.items():
             if current_time < end_time:
-
                 if power == "speed":
-                    color = ROJO
+                    # Elipse alrededor del sprite
+                    pygame.draw.ellipse(screen, ROJO, img_rect.inflate(30, 30), 4)
                 elif power == "jump":
-                    color = VERDE
+                    # Triángulo encima del sprite
+                    points = [
+                        (img_rect.centerx, img_rect.top - 22),
+                        (img_rect.centerx - 18, img_rect.top - 4),
+                        (img_rect.centerx + 18, img_rect.top - 4)
+                    ]
+                    pygame.draw.polygon(screen, VERDE, points)
                 elif power == "gravity":
-                    color = AZUL
-
-                pygame.draw.circle(screen, color, (self.rect.centerx, self.rect.top + offset), 6)
-                offset -= 12
+                    # Bloques en los cuatro lados del sprite
+                    size = 12
+                    pad = 6
+                    pygame.draw.rect(screen, AZUL, (img_rect.left - pad - size, img_rect.centery - size // 2, size, size))
+                    pygame.draw.rect(screen, AZUL, (img_rect.right + pad, img_rect.centery - size // 2, size, size))
+                    pygame.draw.rect(screen, AZUL, (img_rect.centerx - size // 2, img_rect.top - pad - size, size, size))
+                    pygame.draw.rect(screen, AZUL, (img_rect.centerx - size // 2, img_rect.bottom + pad, size, size))
 
 
 # --- Boost ---
